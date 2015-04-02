@@ -25,6 +25,9 @@
 #include <linux/slab.h>
 #include <linux/input.h>
 #include <linux/time.h>
+#ifdef CONFIG_STATE_NOTIFIER
+#include <linux/state_notifier.h>
+#endif
 
 struct cpu_sync {
 	struct task_struct *thread;
@@ -46,6 +49,10 @@ static struct workqueue_struct *cpu_boost_wq;
 
 static struct work_struct input_boost_work;
 
+#ifdef CONFIG_STATE_NOTIFIER
+static struct notifier_block notif;
+#endif
+
 static unsigned int boost_ms;
 module_param(boost_ms, uint, 0644);
 
@@ -64,10 +71,17 @@ module_param(migration_load_threshold, uint, 0644);
 static bool load_based_syncs;
 module_param(load_based_syncs, bool, 0644);
 
-static struct delayed_work input_boost_rem;
+static bool hotplug_boost;
+module_param(hotplug_boost, bool, 0644);
 
+bool wakeup_boost;
+module_param(wakeup_boost, bool, 0644);
+
+static struct delayed_work input_boost_rem;
 static u64 last_input_time;
-#define MIN_INPUT_INTERVAL (150 * USEC_PER_MSEC)
+
+static unsigned int min_input_interval = 150;
+module_param(min_input_interval, uint, 0644);
 
 static int set_input_boost_freq(const char *buf, const struct kernel_param *kp)
 {
@@ -309,6 +323,11 @@ static int boost_migration_notify(struct notifier_block *nb,
 	if (!boost_ms)
 		return NOTIFY_OK;
 
+#ifdef CONFIG_STATE_NOTIFIER
+	if (state_suspended)
+		return NOTIFY_OK;
+#endif
+
 	/* Avoid deadlock in try_to_wake_up() */
 	if (s->thread == current)
 		return NOTIFY_OK;
@@ -362,19 +381,35 @@ static void cpuboost_input_event(struct input_handle *handle,
 		unsigned int type, unsigned int code, int value)
 {
 	u64 now;
+        unsigned int min_interval;
 
-	if (!input_boost_enabled)
+#ifdef CONFIG_STATE_NOTIFIER
+	if (state_suspended)
+		return;
+#endif
+
+	if (!input_boost_enabled || work_pending(&input_boost_work))
 		return;
 
 	now = ktime_to_us(ktime_get());
-	if (now - last_input_time < MIN_INPUT_INTERVAL)
+	min_interval = max(min_input_interval, input_boost_ms);
+
+	if (now - last_input_time < min_interval * USEC_PER_MSEC)
 		return;
 
-	if (work_pending(&input_boost_work))
-		return;
-
+	pr_debug("Input boost for input event.\n");
 	queue_work(cpu_boost_wq, &input_boost_work);
 	last_input_time = ktime_to_us(ktime_get());
+}
+
+bool check_cpuboost(int cpu)
+{
+	struct cpu_sync *i_sync_info;
+	i_sync_info = &per_cpu(sync_info, cpu);
+
+	if (i_sync_info->input_boost_min > 0)
+		return true;
+	return false;
 }
 
 static int cpuboost_input_connect(struct input_handler *handler,
@@ -415,7 +450,6 @@ static void cpuboost_input_disconnect(struct input_handle *handle)
 }
 
 static const struct input_device_id cpuboost_ids[] = {
-	/* multi-touch touchscreen */
 	{
 		.flags = INPUT_DEVICE_ID_MATCH_EVBIT |
 			INPUT_DEVICE_ID_MATCH_ABSBIT,
@@ -423,20 +457,14 @@ static const struct input_device_id cpuboost_ids[] = {
 		.absbit = { [BIT_WORD(ABS_MT_POSITION_X)] =
 			BIT_MASK(ABS_MT_POSITION_X) |
 			BIT_MASK(ABS_MT_POSITION_Y) },
-	},
-	/* touchpad */
+	}, /* multi-touch touchscreen */
 	{
 		.flags = INPUT_DEVICE_ID_MATCH_KEYBIT |
 			INPUT_DEVICE_ID_MATCH_ABSBIT,
 		.keybit = { [BIT_WORD(BTN_TOUCH)] = BIT_MASK(BTN_TOUCH) },
 		.absbit = { [BIT_WORD(ABS_X)] =
 			BIT_MASK(ABS_X) | BIT_MASK(ABS_Y) },
-	},
-	/* Keypad */
-	{
-		.flags = INPUT_DEVICE_ID_MATCH_EVBIT,
-		.evbit = { BIT_MASK(EV_KEY) },
-	},
+	}, /* touchpad */
 	{ },
 };
 
@@ -447,6 +475,59 @@ static struct input_handler cpuboost_input_handler = {
 	.name           = "cpu-boost",
 	.id_table       = cpuboost_ids,
 };
+
+static int cpuboost_cpu_callback(struct notifier_block *cpu_nb,
+				 unsigned long action, void *hcpu)
+{
+#ifdef CONFIG_STATE_NOTIFIER
+	if (state_suspended)
+		return NOTIFY_OK;
+#endif
+
+	switch (action & ~CPU_TASKS_FROZEN) {
+		case CPU_ONLINE:
+			if (!hotplug_boost || !input_boost_enabled ||
+			     work_pending(&input_boost_work))
+				break;
+			pr_debug("Hotplug boost for CPU%lu\n", (long)hcpu);
+			queue_work(cpu_boost_wq, &input_boost_work);
+			last_input_time = ktime_to_us(ktime_get());
+			break;
+		default:
+			break;
+	}
+	return NOTIFY_OK;
+}
+
+static struct notifier_block __refdata cpu_nblk = {
+        .notifier_call = cpuboost_cpu_callback,
+};
+
+#ifdef CONFIG_STATE_NOTIFIER
+static void __wakeup_boost(void)
+{
+	if (!wakeup_boost || !input_boost_enabled ||
+	     work_pending(&input_boost_work))
+		return;
+	pr_debug("Wakeup boost for display on event.\n");
+	queue_work(cpu_boost_wq, &input_boost_work);
+	last_input_time = ktime_to_us(ktime_get());
+}
+
+static int state_notifier_callback(struct notifier_block *this,
+				unsigned long event, void *data)
+{
+	switch (event) {
+		case STATE_NOTIFIER_ACTIVE:
+			__wakeup_boost();
+			break;
+		default:
+			break;
+	}
+
+	return NOTIFY_OK;
+}
+#endif
 
 static int cpu_boost_init(void)
 {
@@ -475,7 +556,20 @@ static int cpu_boost_init(void)
 	atomic_notifier_chain_register(&migration_notifier_head,
 					&boost_migration_nb);
 	ret = input_register_handler(&cpuboost_input_handler);
+	if (ret)
+		pr_err("Cannot register cpuboost input handler.\n");
+
+	ret = register_hotcpu_notifier(&cpu_nblk);
+	if (ret)
+		pr_err("Cannot register cpuboost hotplug handler.\n");
+
+#ifdef CONFIG_STATE_NOTIFIER
+	notif.notifier_call = state_notifier_callback;
+	if (state_register_client(&notif))
+		pr_err("Cannot register State notifier callback for cpuboost.\n");
+#endif
 
 	return 0;
 }
+
 late_initcall(cpu_boost_init);
