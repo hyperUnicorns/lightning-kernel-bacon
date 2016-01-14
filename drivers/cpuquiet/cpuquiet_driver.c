@@ -567,9 +567,9 @@ int __init cpq_auto_hotplug_init(void)
 	register_early_suspend(&cpuquiet_early_suspender);
 #endif
 	
-	enabled = true;
+	enabled = false;
 	// disable mpdecision load calc - just burning cpu cycles
-	enable_rq_load_calc(false);
+	enable_rq_load_calc(true);
 
 	return err;
 	
