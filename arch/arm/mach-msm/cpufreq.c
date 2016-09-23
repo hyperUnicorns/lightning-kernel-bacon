@@ -422,7 +422,7 @@ static struct cpufreq_frequency_table *cpufreq_parse_dt(struct device *dev,
 			GFP_KERNEL);
 
 	if (!dts_freq_table)
-		return ERR_PTR(-ENOMEM);
+		return -ENOMEM;
 
 	*dts_freq_table = *ftbl;
 

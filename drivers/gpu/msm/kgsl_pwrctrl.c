@@ -155,23 +155,8 @@ void kgsl_pwrctrl_pwrlevel_change(struct kgsl_device *device,
 #ifdef CONFIG_CPU_FREQ_GOV_SLIM
         graphics_boost = pwr->active_pwrlevel;
 #endif
+
 }
-EXPORT_SYMBOL(kgsl_pwrctrl_pwrlevel_change);
-
-	kgsl_pwrctrl_buslevel_update(device, true);
-	if (test_bit(KGSL_PWRFLAGS_AXI_ON, &pwr->power_flags))
-		if (pwr->ebi1_clk)
-			clk_set_rate(pwr->ebi1_clk, pwrlevel->bus_freq);
-
-	if (test_bit(KGSL_PWRFLAGS_CLK_ON, &pwr->power_flags) ||
-		(device->state == KGSL_STATE_NAP))
-		clk_set_rate(pwr->grp_clks[0],
-				pwr->pwrlevels[new_level].gpu_freq);
-
-
-	trace_kgsl_pwrlevel(device, pwr->active_pwrlevel, pwrlevel->gpu_freq);
-}
-
 EXPORT_SYMBOL(kgsl_pwrctrl_pwrlevel_change);
 
 static int kgsl_pwrctrl_thermal_pwrlevel_store(struct device *dev,
