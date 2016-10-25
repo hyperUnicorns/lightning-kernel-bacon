@@ -963,6 +963,8 @@ extern void cpuacct_charge(struct task_struct *tsk, u64 cputime);
 static inline void cpuacct_charge(struct task_struct *tsk, u64 cputime) {}
 #endif
 
+#if defined(CONFIG_INTELLI_HOTPLUG) || defined(CONFIG_MSM_RUN_QUEUE_STATS_BE_CONSERVATIVE)
+
 #define NR_AVE_PERIOD_EXP	28
 #define NR_AVE_SCALE(x)		((x) << FSHIFT)
 #define NR_AVE_PERIOD		(1 << NR_AVE_PERIOD_EXP)
