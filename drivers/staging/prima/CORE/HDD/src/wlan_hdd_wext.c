@@ -2239,6 +2239,7 @@ static int __iw_set_bitrate(struct net_device *dev,
         return -EINVAL;
     }
 
+
     pWextState = WLAN_HDD_GET_WEXT_STATE_PTR(pAdapter);
     if (NULL == pWextState)
     {
@@ -4514,17 +4515,6 @@ static int __iw_get_nick(struct net_device *dev,
 static int iw_get_nick(struct net_device *dev,
                        struct iw_request_info *info,
                        union iwreq_data *wrqu, char *extra)
-{
-   int ret;
-
-   vos_ssr_protect(__func__);
-   ret = __iw_get_nick(dev, info, wrqu, extra);
-   vos_ssr_unprotect(__func__);
-
-   return ret;
-}
-
-static struct iw_statistics * __get_wireless_stats(struct net_device *dev)
 {
    int ret;
 
@@ -11177,5 +11167,4 @@ int hdd_UnregisterWext(struct net_device *dev)
 
    return 0;
 }
-
 
