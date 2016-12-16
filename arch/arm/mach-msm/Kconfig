@@ -3038,6 +3038,12 @@ config WALL_CLK_SYSFS
 	 Support the wallclk directory in sysfs filesystem to enable the
 	 wall clock simulation and read the current SFN.
 
+config OEM_PROJECT_INFO
+	bool "CONFIG_OEM_PROJECT_INFO"
+	default y
+	help
+	  This is for project info
+
 config KRAIT_REGULATOR
 	bool "Support Kraits powered via ganged regulators in the pmic"
 	help
