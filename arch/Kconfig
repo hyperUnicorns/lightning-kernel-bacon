@@ -247,7 +247,6 @@ config SECCOMP_FILTER
 
 	  See Documentation/prctl/seccomp_filter.txt for details.
 
-<<<<<<< HEAD
 config HAVE_ARCH_MMAP_RND_BITS
 	bool
 	help
