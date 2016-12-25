@@ -30,6 +30,9 @@
 #include <linux/kthread.h>
 #include <linux/slab.h>
 #include <asm/cputime.h>
+#ifdef CONFIG_STATE_NOTIFIER
+#include <linux/state_notifier.h>
+#endif
 
 static int active_count;
 
@@ -404,6 +407,9 @@ static void cpufreq_impulse_timer(unsigned long data)
 	cpu_load = loadadjfreq / pcpu->policy->cur;
 	boosted = boost_val || now < boostpulse_endtime ||
 			check_cpuboost(data) || cpu_load >= go_hispeed_load;
+#ifdef CONFIG_STATE_NOTIFIER
+	boosted = boosted && !state_suspended;
+#endif
 	this_hispeed_freq = max(hispeed_freq, pcpu->policy->min);
 
 	if (cpu_load <= go_lowspeed_load && !boost_val) {
