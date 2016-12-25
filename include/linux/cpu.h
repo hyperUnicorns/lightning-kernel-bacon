@@ -275,5 +275,6 @@ void idle_notifier_call_chain(unsigned long val);
 
 extern bool check_cpuboost(int cpu);
 extern bool wakeup_boost;
+extern bool fast_lane_mode;
 
 #endif /* _LINUX_CPU_H_ */
