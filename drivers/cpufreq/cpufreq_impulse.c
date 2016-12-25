@@ -1,19 +1,11 @@
 /*
- * drivers/cpufreq/cpufreq_impulse.c
+ * Impulse - Load Sensitive CPU Frequency Governor
  *
- * Copyright (C) 2015 Google, Inc.
+ * Copyright (c) 2014-2015, Pranav Vashi <neobuddy89@gmail.com>
  *
- * This software is licensed under the terms of the GNU General Public
- * License version 2, as published by the Free Software Foundation, and
- * may be copied, distributed, and modified under those terms.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * Author: Mike Chan (mike@android.com)
- * Author: Pranav Vashi (neobuddy89@gmail.com)
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
  *
  */
 
@@ -50,6 +42,7 @@ struct cpufreq_impulse_cpuinfo {
 	spinlock_t target_freq_lock; /*protects target freq */
 	unsigned int target_freq;
 	unsigned int floor_freq;
+        unsigned int min_freq;
 	u64 floor_validate_time;
 	u64 hispeed_validate_time; /* cluster hispeed_validate_time */
 	u64 local_hvtime; /* per-cpu hispeed_validate_time */
@@ -72,10 +65,6 @@ static unsigned int hispeed_freq;
 /* Go to hi speed when CPU load at or above this value. */
 #define DEFAULT_GO_HISPEED_LOAD 99
 static unsigned long go_hispeed_load = DEFAULT_GO_HISPEED_LOAD;
-
-/* Go to lowest speed when CPU load at or below this value. */
-#define DEFAULT_GO_LOWSPEED_LOAD 5
-static unsigned long go_lowspeed_load = DEFAULT_GO_LOWSPEED_LOAD;
 
 /* Target load.  Lower values result in higher CPU speeds. */
 #define DEFAULT_TARGET_LOAD 90
@@ -155,7 +144,8 @@ static u64 round_to_nw_start(u64 jif)
 	return ret;
 }
 
-static void cpufreq_impulse_timer_resched(unsigned long cpu)
+static void cpufreq_impulse_timer_resched(unsigned long cpu,
+					bool slack_only)
 {
 	struct cpufreq_impulse_cpuinfo *pcpu = &per_cpu(cpuinfo, cpu);
 	u64 expires;
@@ -163,15 +153,19 @@ static void cpufreq_impulse_timer_resched(unsigned long cpu)
 	u64 now = ktime_to_us(ktime_get());
 
 	spin_lock_irqsave(&pcpu->load_lock, flags);
-	pcpu->time_in_idle =
-		get_cpu_idle_time(smp_processor_id(),
-				  &pcpu->time_in_idle_timestamp, io_is_busy);
-	pcpu->cputime_speedadj = 0;
-	pcpu->cputime_speedadj_timestamp = pcpu->time_in_idle_timestamp;
 	expires = round_to_nw_start(pcpu->last_evaluated_jiffy);
-	del_timer(&pcpu->cpu_timer);
-	pcpu->cpu_timer.expires = expires;
-	add_timer_on(&pcpu->cpu_timer, cpu);
+
+	if (!slack_only) {
+		pcpu->time_in_idle =
+			get_cpu_idle_time(smp_processor_id(),
+					  &pcpu->time_in_idle_timestamp,
+					  io_is_busy);
+		pcpu->cputime_speedadj = 0;
+		pcpu->cputime_speedadj_timestamp = pcpu->time_in_idle_timestamp;
+		del_timer(&pcpu->cpu_timer);
+		pcpu->cpu_timer.expires = expires;
+		add_timer_on(&pcpu->cpu_timer, cpu);
+        }
 
 	if (timer_slack_val >= 0 &&
 	    (pcpu->target_freq > pcpu->policy->min ||
@@ -406,21 +400,28 @@ static void cpufreq_impulse_timer(unsigned long data)
 	loadadjfreq = (unsigned int)cputime_speedadj * 100;
 	cpu_load = loadadjfreq / pcpu->policy->cur;
 	boosted = boost_val || now < boostpulse_endtime ||
-			check_cpuboost(data) || cpu_load >= go_hispeed_load;
+			check_cpuboost(data) || fast_lane_mode || cpu_load >= go_hispeed_load;
 #ifdef CONFIG_STATE_NOTIFIER
 	boosted = boosted && !state_suspended;
 #endif
 	this_hispeed_freq = max(hispeed_freq, pcpu->policy->min);
 
-	if (cpu_load <= go_lowspeed_load && !boost_val) {
-		boosted = false;
-		new_freq = pcpu->policy->cpuinfo.min_freq;
+	if (boosted) {
+		if (pcpu->target_freq < this_hispeed_freq &&
+		    cpu_load <= MAX_LOCAL_LOAD) {
+			new_freq = this_hispeed_freq;
+		} else {
+			new_freq = choose_freq(pcpu, loadadjfreq);
+
+			if (new_freq < this_hispeed_freq)
+				new_freq = this_hispeed_freq;
+               }
 	} else {
 		new_freq = choose_freq(pcpu, loadadjfreq);
+		if (new_freq > hispeed_freq &&
+				pcpu->target_freq < hispeed_freq)
+                        new_freq = hispeed_freq;
 	}
-
-	if (boosted)
-		new_freq = max(new_freq, this_hispeed_freq);
 
 	if (cpu_load <= MAX_LOCAL_LOAD &&
 	    pcpu->policy->cur >= this_hispeed_freq &&
@@ -496,7 +497,7 @@ rearm_if_notmax:
 
 rearm:
 	if (!timer_pending(&pcpu->cpu_timer))
-		cpufreq_impulse_timer_resched(data);
+		cpufreq_impulse_timer_resched(data, false);
 
 exit:
 	up_read(&pcpu->enable_sem);
@@ -539,7 +540,7 @@ static void cpufreq_impulse_idle_start(void)
 		 */
 		if (!pending) {
 			pcpu->last_evaluated_jiffy = get_jiffies_64();
-			cpufreq_impulse_timer_resched(smp_processor_id());
+			cpufreq_impulse_timer_resched(smp_processor_id(), false);
 
 			/*
 			 * If timer is cancelled because CPU is running at
@@ -575,7 +576,7 @@ static void cpufreq_impulse_idle_end(void)
 
 	/* Arm the timer for 1-2 ticks later if not already. */
 	if (!timer_pending(&pcpu->cpu_timer)) {
-		cpufreq_impulse_timer_resched(smp_processor_id());
+		cpufreq_impulse_timer_resched(smp_processor_id(), false);
 	} else if (time_after_eq(jiffies, pcpu->cpu_timer.expires)) {
 		del_timer(&pcpu->cpu_timer);
 		del_timer(&pcpu->cpu_slack_timer);
@@ -638,7 +639,7 @@ static int cpufreq_impulse_speedchange_task(void *data)
 			}
 
 			if (max_freq != pcpu->policy->cur) {
-				if (!powersave_bias)
+				if (!powersave_bias || state_suspended )
 					__cpufreq_driver_target(pcpu->policy,
 								max_freq,
 								CPUFREQ_RELATION_H);
@@ -704,7 +705,7 @@ static int cpufreq_impulse_notifier(
 	int cpu;
 	unsigned long flags;
 
-	if (val == CPUFREQ_POSTCHANGE) {
+	if (val == CPUFREQ_PRECHANGE) {
 		pcpu = &per_cpu(cpuinfo, freq->cpu);
 		if (!down_read_trylock(&pcpu->enable_sem))
 			return 0;
@@ -962,28 +963,6 @@ static ssize_t store_go_hispeed_load(struct kobject *kobj,
 static struct global_attr go_hispeed_load_attr = __ATTR(go_hispeed_load, 0644,
 		show_go_hispeed_load, store_go_hispeed_load);
 
-static ssize_t show_go_lowspeed_load(struct kobject *kobj,
-				     struct attribute *attr, char *buf)
-{
-	return sprintf(buf, "%lu\n", go_lowspeed_load);
-}
-
-static ssize_t store_go_lowspeed_load(struct kobject *kobj,
-			struct attribute *attr, const char *buf, size_t count)
-{
-	int ret;
-	unsigned long val;
-
-	ret = strict_strtoul(buf, 0, &val);
-	if (ret < 0)
-		return ret;
-	go_lowspeed_load = val;
-	return count;
-}
-
-static struct global_attr go_lowspeed_load_attr = __ATTR(go_lowspeed_load, 0644,
-		show_go_lowspeed_load, store_go_lowspeed_load);
-
 static ssize_t show_min_sample_time(struct kobject *kobj,
 				struct attribute *attr, char *buf)
 {
@@ -1181,7 +1160,6 @@ static struct attribute *impulse_attributes[] = {
 	&above_hispeed_delay_attr.attr,
 	&hispeed_freq_attr.attr,
 	&go_hispeed_load_attr.attr,
-	&go_lowspeed_load_attr.attr,
 	&min_sample_time_attr.attr,
 	&timer_rate_attr.attr,
 	&timer_slack.attr,
@@ -1252,6 +1230,7 @@ static int cpufreq_governor_impulse(struct cpufreq_policy *policy,
 			pcpu->hispeed_validate_time =
 				pcpu->floor_validate_time;
 			pcpu->local_hvtime = pcpu->floor_validate_time;
+                        pcpu->min_freq = policy->min;
 			down_write(&pcpu->enable_sem);
 			del_timer_sync(&pcpu->cpu_timer);
 			del_timer_sync(&pcpu->cpu_slack_timer);
@@ -1333,6 +1312,11 @@ static int cpufreq_governor_impulse(struct cpufreq_policy *policy,
 				pcpu->target_freq = policy->min;
 
 			spin_unlock_irqrestore(&pcpu->target_freq_lock, flags);
+
+			if (policy->min < pcpu->min_freq)
+				cpufreq_impulse_timer_resched(j, true);
+			pcpu->min_freq = policy->min;
+
 			up_read(&pcpu->enable_sem);
 		}
 
@@ -1408,7 +1392,7 @@ static void __exit cpufreq_impulse_exit(void)
 
 module_exit(cpufreq_impulse_exit);
 
-MODULE_AUTHOR("Mike Chan <mike@android.com>");
+MODULE_AUTHOR("Pranav Vashi <neobuddy89@gmail.com>");
 MODULE_DESCRIPTION("'cpufreq_impulse' - A cpufreq governor for "
-	"all purpose.");
-MODULE_LICENSE("GPL");
+	"Latency sensitive workloads");
+MODULE_LICENSE("GPLv2");
