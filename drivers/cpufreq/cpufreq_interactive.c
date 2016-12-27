@@ -95,7 +95,11 @@ static unsigned long min_sample_time = DEFAULT_MIN_SAMPLE_TIME;
  * The sample rate of the timer used to increase frequency
  */
 #define DEFAULT_TIMER_RATE (20 * USEC_PER_MSEC)
+#define DEFAULT_TIMER_RATE_SUSP ((unsigned long)(50 * USEC_PER_MSEC))
 static unsigned long timer_rate = DEFAULT_TIMER_RATE;
+#ifdef CONFIG_STATE_NOTIFIER
+static unsigned long timer_rate_prev;
+#endif
 
 /*
  * Wait this long before raising speed above hispeed, by default a single
@@ -387,6 +391,19 @@ static void cpufreq_interactive_timer(unsigned long data)
 		return;
 	if (!pcpu->governor_enabled)
 		goto exit;
+
+#ifdef CONFIG_STATE_NOTIFIER
+	if (!state_suspended &&
+		timer_rate != timer_rate_prev)
+		timer_rate = timer_rate_prev;
+	else if (state_suspended &&
+		timer_rate != DEFAULT_TIMER_RATE_SUSP) {
+		timer_rate_prev = timer_rate;
+		timer_rate
+			= max(timer_rate,
+				DEFAULT_TIMER_RATE_SUSP);
+	}
+#endif
 
 	spin_lock_irqsave(&pcpu->load_lock, flags);
 	now = update_load(data);
@@ -965,6 +982,9 @@ static ssize_t store_timer_rate(struct kobject *kobj,
 				val_round);
 
 	timer_rate = val_round;
+#ifdef CONFIG_STATE_NOTIFIER
+	timer_rate_prev = val_round;
+#endif
 	return count;
 }
 
