@@ -5108,13 +5108,6 @@ out_one_pinned:
 
 	ld_moved = 0;
 out:
-<<<<<<< HEAD
-	trace_sched_load_balance(this_cpu, idle, *balance,
-				 group ? group->cpumask[0] : 0,
-				 busiest ? busiest->nr_running : 0, imbalance,
-				 env.flags, ld_moved, sd->balance_interval);
-=======
->>>>>>> 01b7d71... TESTING!!! Revert "tracing/sched: add load balancer tracepoint"
 	return ld_moved;
 }
 
