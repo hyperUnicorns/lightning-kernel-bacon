@@ -614,7 +614,7 @@ static inline void __lf_gov_queue_work(int cpu, struct lf_gdbs_data *dbs_data,
 {
 	struct cpu_dbs_common_info *cdbs = &per_cpu(lf_cpu_dbs_info, cpu).cdbs;
 
-	mod_delayed_work_on(cpu, system_wq, &cdbs->work, delay);
+	queue_delayed_work_on(cpu, system_wq, &cdbs->work, delay);
 }
 
 static void lf_gov_queue_work(struct lf_gdbs_data *dbs_data,
@@ -809,7 +809,7 @@ static int lf_cpufreq_governor_dbs(struct cpufreq_policy *policy,
 					kcpustat_cpu(j).cpustat[CPUTIME_NICE];
 
 			mutex_init(&j_cdbs->timer_mutex);
-			INIT_DEFERRABLE_WORK(&j_cdbs->work, lf_dbs_timer);
+			INIT_DELAYED_WORK_DEFERRABLE(&j_cdbs->work, lf_dbs_timer);
 		}
 
 		lf_dbs_info->up_ticks = 0;
