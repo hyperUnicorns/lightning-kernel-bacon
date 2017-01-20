@@ -118,7 +118,6 @@ struct cpufreq_policy {
 	struct kobject		kobj;
 	struct completion	kobj_unregister;
 
-        unsigned int util;
 };
 
 static inline bool policy_is_shared(struct cpufreq_policy *policy)
