@@ -117,6 +117,8 @@ struct cpufreq_policy {
 
 	struct kobject		kobj;
 	struct completion	kobj_unregister;
+
+        unsigned int util;
 };
 
 static inline bool policy_is_shared(struct cpufreq_policy *policy)
@@ -494,6 +496,10 @@ void cpufreq_frequency_table_get_attr(struct cpufreq_frequency_table *table,
 				      unsigned int cpu);
 
 void cpufreq_frequency_table_put_attr(unsigned int cpu);
+
+#ifdef CONFIG_BLU_PLUG
+unsigned int cpufreq_quick_get_util(unsigned int cpu);
+#endif
 
 
 /*********************************************************************

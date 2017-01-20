@@ -2159,6 +2159,26 @@ char *cpufreq_get_gov(unsigned int cpu)
 EXPORT_SYMBOL(cpufreq_get_gov);
 #endif
 
+#ifdef CONFIG_BLU_PLUG
+/*
+ *	cpufreq_quick_get_util - get the CPU utilization
+ *	@cpu: CPU whose load needs to be known
+ */
+unsigned int cpufreq_quick_get_util(unsigned int cpu)
+{
+	struct cpufreq_policy *policy = cpufreq_cpu_get(cpu);
+	unsigned int load = 0;
+
+	if (policy) {
+		load = policy->util;
+		cpufreq_cpu_put(policy);
+	}
+
+	return load;
+}
+EXPORT_SYMBOL(cpufreq_quick_get_util);
+#endif
+
 static int cpufreq_cpu_callback(struct notifier_block *nfb,
 					unsigned long action, void *hcpu)
 {
