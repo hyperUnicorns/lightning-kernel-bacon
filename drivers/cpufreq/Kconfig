@@ -360,7 +360,6 @@ config CPU_FREQ_GOV_SMARTMAX_EPS
         help
           'smartmax EPS' is the extreme powersaving version of smartmax
 
-<<<<<<< HEAD
 config CPU_FREQ_GOV_LIONFISH
 	tristate "'lionfish' governor"
 	depends on CPU_FREQ
