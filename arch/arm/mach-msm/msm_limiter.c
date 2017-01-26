@@ -41,7 +41,7 @@
 
 #define DEFAULT_SUSP_MAX_FREQUENCY	1728000
 #define DEFAULT_RESUME_MAX_FREQUENCY	2457600
-#define DEFAULT_MIN_FREQUENCY		300000
+#define DEFAULT_MIN_FREQUENCY		268800
 
 static struct notifier_block notif;
 static unsigned int freq_control = FREQ_CONTROL;
