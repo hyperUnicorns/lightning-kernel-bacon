@@ -11,6 +11,7 @@
  */
 
 /include/ "msm8974-oppo-panel.dtsi"
+/include/ "msm8974-oppo-camera-sensor.dtsi"
 
 / {
 	aliases {
