@@ -371,7 +371,6 @@ struct rq {
 	/* time-based average load */
 	u64 nr_last_stamp;
 	unsigned int ave_nr_running;
-        u64 nr_running_integral;
 	seqcount_t ave_seqcnt;
 
 	/* capture load from *all* tasks on this cpu: */
@@ -946,7 +945,7 @@ extern void cpuacct_charge(struct task_struct *tsk, u64 cputime);
 static inline void cpuacct_charge(struct task_struct *tsk, u64 cputime) {}
 #endif
 
-#if defined(CONFIG_INTELLI_HOTPLUG) || defined(CONFIG_MSM_RUN_QUEUE_STATS_BE_CONSERVATIVE) || defined(CONFIG_CPUQUIET_FRAMEWORK) || defined(CONFIG_LAZYPLUG)
+#if defined(CONFIG_INTELLI_HOTPLUG) || defined(CONFIG_MSM_RUN_QUEUE_STATS_BE_CONSERVATIVE) || defined(CONFIG_CPUQUIET_FRAMEWORK)
 /* 28 ~= 134217728ns = 134.2ms
  * 26 ~=  67108864ns =  67.1ms
  * 25 ~=  33554432ns =  33.5ms

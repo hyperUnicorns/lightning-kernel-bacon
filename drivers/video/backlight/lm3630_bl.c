@@ -56,8 +56,6 @@
 
 #define DISABLE_PWM_MODE 1
 
-extern void lazyplug_enter_lazy(bool enter);
-
 static struct lm3630_chip_data *lm3630_pchip;
 
 struct lm3630_chip_data {
@@ -219,12 +217,10 @@ static int lm3630_intr_config(struct lm3630_chip_data *pchip)
 	// if display is switched off
 	if (bl_level == 0)
 		state_suspend();
-                lazyplug_enter_lazy(true);
 
 	// if display is switched on
 	if (bl_level != 0 && pre_brightness == 0)
 		state_resume();
-                lazyplug_enter_lazy(false);
 #endif /*CONFIG_STATE_NOTIFIER*/
 
 /* Xiaori.Yuan@Mobile Phone Software Dept.Driver, 2014/04/28  Add for add log for 14001 black screen */
