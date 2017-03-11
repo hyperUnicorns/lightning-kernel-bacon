@@ -1412,8 +1412,9 @@ static void check_temp(struct work_struct *work)
 
 reschedule:
 	if (enabled)
-		schedule_delayed_work(&check_temp_work,
-				msecs_to_jiffies(msm_thermal_info.poll_ms));
+		queue_delayed_work(system_power_efficient_wq,
+			&check_temp_work,
+			msecs_to_jiffies(msm_thermal_info.poll_ms));
 }
 
 static int __ref msm_thermal_cpu_callback(struct notifier_block *nfb,
@@ -2283,7 +2284,7 @@ int msm_thermal_init(struct msm_thermal_data *pdata)
 		pr_err("%s: cannot register cpufreq notifier\n",
 			KBUILD_MODNAME);
 	INIT_DELAYED_WORK(&check_temp_work, check_temp);
-	schedule_delayed_work(&check_temp_work, msecs_to_jiffies(10000));
+	queue_delayed_work(system_power_efficient_wq, &check_temp_work, msecs_to_jiffies(10000));
 
 	if (core_control_enabled)	
 		register_cpu_notifier(&msm_thermal_cpu_notifier);
