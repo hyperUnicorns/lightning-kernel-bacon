@@ -373,7 +373,7 @@ KBUILD_CFLAGS   := -Wall -DNDEBUG -Wundef -Wstrict-prototypes -Wno-trigraphs \
 		   -Werror-implicit-function-declaration \
 		   -Wno-format-security \
                    -Wno-shift-overflow -Wno-tautological-compare \
-		   -Wno-unused-const-variable \
+		   -Wno-unused-const-variable -Wno-misleading-indentation\
                    -Wno-unused-variable \
 		   -fno-delete-null-pointer-checks \
 		   -mcpu=cortex-a15 -mtune=cortex-a15 -mfpu=neon-vfpv4 -marm \
