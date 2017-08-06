@@ -497,6 +497,13 @@ static bool cpufreq_update_allowed(int mpd)
 	return true;
 }
 
+static atomic_t user_max = ATOMIC_INIT(0);
+
+int cpufreq_get_user_max(void)
+{
+	return atomic_read(&user_max);
+}
+
 /**
  * cpufreq_per_cpu_attr_write() / store_##file_name() - sysfs write access
  */
@@ -525,6 +532,8 @@ static ssize_t store_##file_name					\
 	ret = cpufreq_driver->verify(&new_policy);			\
 	if (ret)							\
 		pr_err("cpufreq: Frequency verification failed\n");	\
+	else								\
+		atomic_set(&user_max, new_policy.max);			\
 									\
 	policy->user_policy.min = new_policy.min;			\
 	policy->user_policy.max = new_policy.max;			\
